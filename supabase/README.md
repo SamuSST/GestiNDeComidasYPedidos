@@ -15,7 +15,12 @@ Supabase. En este repo está el script que crea las tablas: `schema.sql`.
 
 Solo los usuarios con sesión iniciada pueden leer y escribir (Row Level Security).
 
-## Configuración (una sola vez)
+## Proyecto
+
+- Proyecto: `SazonControl` (`fnakzeakrmaoswrxheyb`)
+- La URL y la llave *publishable* ya están en `src/db.ts`; no hace falta configurar variables.
+
+## Configuración (si se crea un proyecto nuevo)
 
 1. Crear un proyecto en https://supabase.com (plan gratuito).
 2. **SQL Editor → New query**: pegar `schema.sql` y presionar **Run**.

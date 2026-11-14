@@ -3,11 +3,15 @@ import type { Ingredient, Loan, MenuItem, Order, Service } from "./types";
 
 /**
  * Conexión a Supabase. Las credenciales llegan en el build desde
- * VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY. Si faltan, la app funciona
- * en modo local (datos solo en este navegador).
+ * VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY, o se usan las del proyecto por defecto.
  */
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+// Proyecto "SazonControl". La llave publishable es pública por diseño:
+// los datos están protegidos por Row Level Security (solo usuarios con sesión).
+const DEFAULT_URL = "https://fnakzeakrmaoswrxheyb.supabase.co";
+const DEFAULT_KEY = "sb_publishable_BvamrKPM07UC4iaSpE30Xw_iVn9j4-4";
+
+const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined) || DEFAULT_URL;
+const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || DEFAULT_KEY;
 
 export const supabase = url && anonKey ? createClient(url, anonKey) : null;
 export const cloudEnabled = !!supabase;
