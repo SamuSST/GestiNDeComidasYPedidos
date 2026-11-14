@@ -17,12 +17,22 @@ type IconName =
   | "card"
   | "bank";
 
+type Ingredient = {
+  id: string;
+  name: string;
+  unit: string;
+  buyQty: number;
+  buyPrice: number;
+  usedQty: number;
+};
+
 type MenuItem = {
   id: string;
   name: string;
   quantity: number;
   unitCost: number;
   price: number;
+  ingredients?: Ingredient[];
 };
 
 type Order = {
@@ -73,7 +83,24 @@ const INITIAL_SERVICES: Service[] = [
     date: "2025-06-13",
     shift: "Cena",
     items: [
-      { id: "m3", name: "Hamburguesa artesanal", quantity: 22, unitCost: 9000, price: 19000 },
+      {
+        id: "m3",
+        name: "Hamburguesa artesanal",
+        quantity: 22,
+        unitCost: 9000,
+        price: 19000,
+        ingredients: [
+          { id: "i1", name: "Pan de hamburguesa", unit: "unid", buyQty: 12, buyPrice: 9600, usedQty: 22 },
+          { id: "i2", name: "Carne molida", unit: "g", buyQty: 1000, buyPrice: 28000, usedQty: 2640 },
+          { id: "i3", name: "Queso tajado", unit: "tajadas", buyQty: 30, buyPrice: 21000, usedQty: 22 },
+          { id: "i4", name: "Tocineta", unit: "g", buyQty: 500, buyPrice: 14000, usedQty: 660 },
+          { id: "i5", name: "Tomate", unit: "g", buyQty: 1000, buyPrice: 4000, usedQty: 800 },
+          { id: "i6", name: "Lechuga", unit: "unid", buyQty: 1, buyPrice: 3000, usedQty: 2 },
+          { id: "i7", name: "Papas a la francesa", unit: "g", buyQty: 2500, buyPrice: 15000, usedQty: 3300 },
+          { id: "i8", name: "Salsas", unit: "kit", buyQty: 1, buyPrice: 12000, usedQty: 1 },
+          { id: "i9", name: "Empaques", unit: "unid", buyQty: 50, buyPrice: 25000, usedQty: 22 },
+        ],
+      },
       { id: "m4", name: "Wrap vegetariano", quantity: 8, unitCost: 7500, price: 17000 },
     ],
     orders: [
@@ -219,8 +246,22 @@ function readStorage<T>(key: string, fallback: T): T {
   }
 }
 
+const ingredientCost = (ing: Ingredient) =>
+  ing.buyQty > 0 ? Math.round((ing.buyPrice / ing.buyQty) * ing.usedQty) : 0;
+
+const recipeCost = (item: MenuItem) =>
+  (item.ingredients || []).reduce((sum, ing) => sum + ingredientCost(ing), 0);
+
+/** Si la preparación tiene ingredientes, el costo por plato sale de ellos. */
+function itemUnitCost(item: MenuItem) {
+  if (item.ingredients?.length) return item.quantity ? recipeCost(item) / item.quantity : 0;
+  return item.unitCost;
+}
+
 function serviceTotals(service: Service) {
-  const cost = service.items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
+  const cost = Math.round(
+    service.items.reduce((sum, item) => sum + item.quantity * itemUnitCost(item), 0),
+  );
   const sales = service.orders.reduce((sum, order) => {
     const item = service.items.find((entry) => entry.id === order.itemId);
     return sum + (item?.price || 0) * order.quantity;
@@ -260,6 +301,7 @@ export default function App() {
   const [showLoanForm, setShowLoanForm] = useState(false);
   const [showOrderForm, setShowOrderForm] = useState(false);
   const [showMenuForm, setShowMenuForm] = useState(false);
+  const [recipeItemId, setRecipeItemId] = useState<string | null>(null);
 
   useEffect(() => localStorage.setItem("sazon-services", JSON.stringify(services)), [services]);
   useEffect(() => localStorage.setItem("sazon-loans", JSON.stringify(loans)), [loans]);
@@ -596,6 +638,7 @@ export default function App() {
               onTogglePayment={(id) => updatePayment(selected.id, id)}
               onAddOrder={() => setShowOrderForm(true)}
               onAddMenu={() => setShowMenuForm(true)}
+              onOpenRecipe={(id) => setRecipeItemId(id)}
             />
           )}
 
@@ -795,7 +838,23 @@ export default function App() {
               all.map((s) => (s.id === selected.id ? { ...s, items: [...s.items, item] } : s)),
             );
             setShowMenuForm(false);
+            setRecipeItemId(item.id);
           }}
+        />
+      )}
+      {recipeItemId && selected && selected.items.some((i) => i.id === recipeItemId) && (
+        <RecipeModal
+          item={selected.items.find((i) => i.id === recipeItemId)!}
+          onClose={() => setRecipeItemId(null)}
+          onChange={(item) =>
+            setServices((all) =>
+              all.map((s) =>
+                s.id === selected.id
+                  ? { ...s, items: s.items.map((i) => (i.id === item.id ? item : i)) }
+                  : s,
+              ),
+            )
+          }
         />
       )}
     </div>
@@ -847,12 +906,14 @@ function ServiceDetail({
   onTogglePayment,
   onAddOrder,
   onAddMenu,
+  onOpenRecipe,
 }: {
   service: Service;
   onBack: () => void;
   onTogglePayment: (id: string) => void;
   onAddOrder: () => void;
   onAddMenu: () => void;
+  onOpenRecipe: (id: string) => void;
 }) {
   const totals = serviceTotals(service);
   const margin = totals.sales ? Math.round((totals.profit / totals.sales) * 100) : 0;
@@ -926,9 +987,17 @@ function ServiceDetail({
             </div>
             {service.items.map((item) => (
               <div className="table-row" key={item.id}>
-                <strong>{item.name}</strong>
+                <div className="prep-cell">
+                  <strong>{item.name}</strong>
+                  <button className="recipe-link" onClick={() => onOpenRecipe(item.id)}>
+                    <Icon name="chef" size={13} />
+                    {item.ingredients?.length
+                      ? `${item.ingredients.length} ingredientes · ${money(itemUnitCost(item))} c/u`
+                      : "Agregar ingredientes"}
+                  </button>
+                </div>
                 <span>{item.quantity}</span>
-                <span>{money(item.unitCost)}</span>
+                <span>{money(itemUnitCost(item))}</span>
                 <strong>{money(item.price)}</strong>
               </div>
             ))}
@@ -1205,7 +1274,7 @@ function MenuForm({ onClose, onSave }: { onClose: () => void; onSave: (item: Men
   return (
     <Modal
       title="Agregar preparación"
-      subtitle="Registra cuántos platos prepararás, su costo y precio."
+      subtitle="Registra cuántos platos prepararás y su precio. Luego puedes agregar los ingredientes para calcular el costo exacto."
       onClose={onClose}
     >
       <form onSubmit={submit} className="form">
@@ -1229,7 +1298,7 @@ function MenuForm({ onClose, onSave }: { onClose: () => void; onSave: (item: Men
           />
         </label>
         <label>
-          Costo por plato
+          Costo por plato (opcional)
           <input
             type="number"
             min="0"
@@ -1314,5 +1383,213 @@ function LoanForm({ onClose, onSave }: { onClose: () => void; onSave: (loan: Loa
         </div>
       </form>
     </Modal>
+  );
+}
+
+function RecipeModal({
+  item,
+  onClose,
+  onChange,
+}: {
+  item: MenuItem;
+  onClose: () => void;
+  onChange: (item: MenuItem) => void;
+}) {
+  const ingredients = item.ingredients || [];
+  const [name, setName] = useState("");
+  const [unit, setUnit] = useState("g");
+  const [buyQty, setBuyQty] = useState("");
+  const [buyPrice, setBuyPrice] = useState("");
+  const [usedQty, setUsedQty] = useState("");
+
+  const total = recipeCost(item);
+  const perPlate = itemUnitCost(item);
+  const profitPerPlate = item.price - perPlate;
+  const margin = item.price ? Math.round((profitPerPlate / item.price) * 100) : 0;
+  const preview = ingredientCost({
+    id: "",
+    name,
+    unit,
+    buyQty: Number(buyQty),
+    buyPrice: Number(buyPrice),
+    usedQty: Number(usedQty),
+  });
+
+  const update = (patch: Partial<MenuItem>) => onChange({ ...item, ...patch });
+
+  const addIngredient = (e: FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !Number(buyQty) || !Number(usedQty)) return;
+    update({
+      ingredients: [
+        ...ingredients,
+        {
+          id: uid(),
+          name: name.trim(),
+          unit: unit.trim() || "unid",
+          buyQty: Number(buyQty),
+          buyPrice: Number(buyPrice),
+          usedQty: Number(usedQty),
+        },
+      ],
+    });
+    setName("");
+    setBuyQty("");
+    setBuyPrice("");
+    setUsedQty("");
+  };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal recipe-modal">
+        <button className="close" onClick={onClose}>
+          <Icon name="x" />
+        </button>
+        <p className="eyebrow">Costo de la preparación</p>
+        <h2>{item.name}</h2>
+        <p className="modal-subtitle">
+          Anota lo que compraste y cuánto usaste. La app calcula el costo de cada plato.
+        </p>
+
+        <div className="recipe-basics">
+          <label>
+            Platos que salen
+            <input
+              type="number"
+              min="1"
+              value={item.quantity}
+              onChange={(e) => update({ quantity: Math.max(1, Number(e.target.value)) })}
+            />
+          </label>
+          <label>
+            Precio de venta
+            <input
+              type="number"
+              min="0"
+              value={item.price}
+              onChange={(e) => update({ price: Number(e.target.value) })}
+            />
+          </label>
+        </div>
+
+        <div className="recipe-summary">
+          <div>
+            <span>Costo total</span>
+            <strong>{money(total)}</strong>
+          </div>
+          <div>
+            <span>Costo por plato</span>
+            <strong>{money(perPlate)}</strong>
+          </div>
+          <div>
+            <span>Ganancia por plato</span>
+            <strong className={profitPerPlate < 0 ? "negative" : ""}>
+              {money(profitPerPlate)} <small>({margin}%)</small>
+            </strong>
+          </div>
+        </div>
+
+        <div className="ingredient-list">
+          {ingredients.length ? (
+            ingredients.map((ing) => (
+              <div className="ingredient-row" key={ing.id}>
+                <div>
+                  <strong>{ing.name}</strong>
+                  <span>
+                    Usé {ing.usedQty.toLocaleString("es-CO")} {ing.unit} · compré{" "}
+                    {ing.buyQty.toLocaleString("es-CO")} {ing.unit} por {money(ing.buyPrice)}
+                  </span>
+                </div>
+                <b>{money(ingredientCost(ing))}</b>
+                <button
+                  className="remove-ingredient"
+                  aria-label={`Quitar ${ing.name}`}
+                  onClick={() => update({ ingredients: ingredients.filter((i) => i.id !== ing.id) })}
+                >
+                  <Icon name="x" size={14} />
+                </button>
+              </div>
+            ))
+          ) : (
+            <p className="ingredient-empty">
+              Aún no hay ingredientes. Agrega el primero abajo (pan, carne, queso, empaques…).
+            </p>
+          )}
+        </div>
+
+        <form className="form ingredient-form" onSubmit={addIngredient}>
+          <label className="full">
+            Ingrediente o gasto
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ej. Pan de hamburguesa"
+            />
+          </label>
+          <label>
+            Unidad
+            <input
+              list="units"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              placeholder="g, unid, ml…"
+            />
+            <datalist id="units">
+              <option value="g" />
+              <option value="kg" />
+              <option value="ml" />
+              <option value="l" />
+              <option value="unid" />
+              <option value="tajadas" />
+              <option value="paquete" />
+            </datalist>
+          </label>
+          <label>
+            Cantidad que compré
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={buyQty}
+              onChange={(e) => setBuyQty(e.target.value)}
+              placeholder="Ej. 12"
+            />
+          </label>
+          <label>
+            Lo que pagué
+            <input
+              type="number"
+              min="0"
+              value={buyPrice}
+              onChange={(e) => setBuyPrice(e.target.value)}
+              placeholder="Ej. 9600"
+            />
+          </label>
+          <label>
+            Cantidad que usé
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={usedQty}
+              onChange={(e) => setUsedQty(e.target.value)}
+              placeholder="Ej. 22"
+            />
+          </label>
+          <div className="ingredient-preview full">
+            <span>Costo de este ingrediente</span>
+            <strong>{money(preview)}</strong>
+          </div>
+          <div className="form-actions full">
+            <button type="button" className="secondary" onClick={onClose}>
+              Listo
+            </button>
+            <button className="primary" disabled={!name.trim() || !Number(buyQty) || !Number(usedQty)}>
+              <Icon name="plus" size={16} /> Agregar ingrediente
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
