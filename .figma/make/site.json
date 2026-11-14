@@ -1,0 +1,10 @@
+{
+  "description": "Administra pedidos de almuerzos y cenas, clientes, costos, pagos pendientes, ganancias y préstamos para organizar tu negocio de comidas.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
