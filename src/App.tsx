@@ -1,4 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { Ingredient, Loan, MenuItem, Order, Service } from "./types";
+import { api, cloudEnabled, loadAll, supabase } from "./db";
 
 type IconName =
   | "home"
@@ -16,49 +18,6 @@ type IconName =
   | "utensils"
   | "card"
   | "bank";
-
-type Ingredient = {
-  id: string;
-  name: string;
-  unit: string;
-  buyQty: number;
-  buyPrice: number;
-  usedQty: number;
-};
-
-type MenuItem = {
-  id: string;
-  name: string;
-  quantity: number;
-  unitCost: number;
-  price: number;
-  ingredients?: Ingredient[];
-};
-
-type Order = {
-  id: string;
-  customer: string;
-  itemId: string;
-  quantity: number;
-  paid: boolean;
-};
-
-type Service = {
-  id: string;
-  date: string;
-  shift: "Almuerzo" | "Cena";
-  items: MenuItem[];
-  orders: Order[];
-};
-
-type Loan = {
-  id: string;
-  lender: string;
-  amount: number;
-  date: string;
-  note: string;
-  returned: boolean;
-};
 
 type Tab = "inicio" | "servicios" | "pagos" | "prestamos";
 
@@ -142,7 +101,12 @@ const money = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 
-const uid = () => Math.random().toString(36).slice(2, 10);
+const uid = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
+        (Number(c) ^ (Math.random() * 16) >> (Number(c) / 4)).toString(16),
+      );
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -291,11 +255,56 @@ function shortDate(date: string) {
 }
 
 export default function App() {
+  // Con Supabase configurado se pide iniciar sesión; si no, todo queda en este navegador.
+  const [session, setSession] = useState<"loading" | "out" | "in">(
+    cloudEnabled ? "loading" : "in",
+  );
+
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ? "in" : "out"));
+    const { data } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ? "in" : "out"));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  if (session === "loading") return <LoadingScreen text="Conectando…" />;
+  if (session === "out") return <LoginScreen />;
+  return <Dashboard />;
+}
+
+function Dashboard() {
   const [tab, setTab] = useState<Tab>("inicio");
   const [services, setServices] = useState<Service[]>(() =>
-    readStorage("sazon-services", INITIAL_SERVICES),
+    cloudEnabled ? [] : readStorage("sazon-services", INITIAL_SERVICES),
   );
-  const [loans, setLoans] = useState<Loan[]>(() => readStorage("sazon-loans", INITIAL_LOANS));
+  const [loans, setLoans] = useState<Loan[]>(() =>
+    cloudEnabled ? [] : readStorage("sazon-loans", INITIAL_LOANS),
+  );
+  const [loading, setLoading] = useState(cloudEnabled);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  const reload = () =>
+    loadAll()
+      .then((data) => {
+        setServices(data.services);
+        setLoans(data.loans);
+        setSyncError(null);
+      })
+      .catch((e: Error) => setSyncError(`No se pudieron cargar los datos: ${e.message}`))
+      .finally(() => setLoading(false));
+
+  useEffect(() => {
+    if (cloudEnabled) reload();
+  }, []);
+
+  /** Guarda en Supabase; si falla, avisa y recarga lo que hay en la base. */
+  const persist = (action: () => Promise<void>) => {
+    if (!cloudEnabled) return;
+    action().catch((e: Error) => {
+      setSyncError(`No se guardó el último cambio: ${e.message}`);
+      reload();
+    });
+  };
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showServiceForm, setShowServiceForm] = useState(false);
   const [showLoanForm, setShowLoanForm] = useState(false);
@@ -303,8 +312,12 @@ export default function App() {
   const [showMenuForm, setShowMenuForm] = useState(false);
   const [recipeItemId, setRecipeItemId] = useState<string | null>(null);
 
-  useEffect(() => localStorage.setItem("sazon-services", JSON.stringify(services)), [services]);
-  useEffect(() => localStorage.setItem("sazon-loans", JSON.stringify(loans)), [loans]);
+  useEffect(() => {
+    if (!cloudEnabled) localStorage.setItem("sazon-services", JSON.stringify(services));
+  }, [services]);
+  useEffect(() => {
+    if (!cloudEnabled) localStorage.setItem("sazon-loans", JSON.stringify(loans));
+  }, [loans]);
 
   const allTotals = useMemo(
     () =>
@@ -335,6 +348,10 @@ export default function App() {
   const margin = allTotals.sales ? Math.round((profit / allTotals.sales) * 100) : 0;
 
   const updatePayment = (serviceId: string, orderId: string) => {
+    const order = services
+      .find((s) => s.id === serviceId)
+      ?.orders.find((o) => o.id === orderId);
+    if (order) persist(() => api.setOrderPaid(orderId, !order.paid));
     setServices((current) =>
       current.map((service) =>
         service.id === serviceId
@@ -405,7 +422,7 @@ export default function App() {
         </div>
         <div className="local-note">
           <span className="status-dot" />
-          Datos guardados en este dispositivo
+          {cloudEnabled ? "Datos en la nube · compartidos" : "Datos guardados en este dispositivo"}
         </div>
       </aside>
 
@@ -424,18 +441,34 @@ export default function App() {
               month: "long",
             }).format(new Date())}
           </div>
-          <button className="avatar" aria-label="Perfil">
-            MC
+          <button
+            className="avatar"
+            aria-label={cloudEnabled ? "Cerrar sesión" : "Perfil"}
+            title={cloudEnabled ? "Cerrar sesión" : undefined}
+            onClick={() => {
+              if (supabase && confirmSignOut()) supabase.auth.signOut();
+            }}
+          >
+            SL
           </button>
         </header>
 
         <div className="content">
+          {syncError && (
+            <div className="sync-error" role="alert">
+              <span>{syncError}</span>
+              <button onClick={() => setSyncError(null)} aria-label="Cerrar aviso">
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+          )}
+          {loading && <p className="loading-note">Cargando datos…</p>}
           {tab === "inicio" && (
             <>
               <section className="page-heading">
                 <div>
                   <p className="eyebrow">Resumen general</p>
-                  <h1>Hola, María</h1>
+                  <h1>Hola, Samuel y Luisa</h1>
                   <p>Tu negocio, claro y bajo control.</p>
                 </div>
                 <button className="primary" onClick={() => setShowServiceForm(true)}>
@@ -761,11 +794,12 @@ export default function App() {
                         <button
                           className="secondary"
                           disabled={loan.returned}
-                          onClick={() =>
+                          onClick={() => {
+                            persist(() => api.setLoanReturned(loan.id, true));
                             setLoans((all) =>
                               all.map((l) => (l.id === loan.id ? { ...l, returned: true } : l)),
-                            )
-                          }
+                            );
+                          }}
                         >
                           {loan.returned ? "Completado" : "Marcar devuelto"}
                         </button>
@@ -804,7 +838,10 @@ export default function App() {
         <ServiceForm
           onClose={() => setShowServiceForm(false)}
           onSave={(service) => {
-            setServices((all) => [...all, service]);
+            persist(() => api.addService(service));
+            setServices((all) =>
+              [...all, service].sort((a, b) => a.date.localeCompare(b.date)),
+            );
             setShowServiceForm(false);
             setTab("servicios");
           }}
@@ -814,6 +851,7 @@ export default function App() {
         <LoanForm
           onClose={() => setShowLoanForm(false)}
           onSave={(loan) => {
+            persist(() => api.addLoan(loan));
             setLoans((all) => [loan, ...all]);
             setShowLoanForm(false);
           }}
@@ -824,6 +862,7 @@ export default function App() {
           service={selected}
           onClose={() => setShowOrderForm(false)}
           onAdd={(order) => {
+            persist(() => api.addOrder(selected.id, order));
             setServices((all) =>
               all.map((s) => (s.id === selected.id ? { ...s, orders: [...s.orders, order] } : s)),
             );
@@ -834,6 +873,7 @@ export default function App() {
         <MenuForm
           onClose={() => setShowMenuForm(false)}
           onSave={(item) => {
+            persist(() => api.addItem(selected.id, item));
             setServices((all) =>
               all.map((s) => (s.id === selected.id ? { ...s, items: [...s.items, item] } : s)),
             );
@@ -846,15 +886,17 @@ export default function App() {
         <RecipeModal
           item={selected.items.find((i) => i.id === recipeItemId)!}
           onClose={() => setRecipeItemId(null)}
-          onChange={(item) =>
+          onChange={(item) => {
+            const prev = selected.items.find((i) => i.id === item.id);
+            if (prev) persist(() => api.syncItem(selected.id, prev, item));
             setServices((all) =>
               all.map((s) =>
                 s.id === selected.id
                   ? { ...s, items: s.items.map((i) => (i.id === item.id ? item : i)) }
                   : s,
               ),
-            )
-          }
+            );
+          }}
         />
       )}
     </div>
@@ -1590,6 +1632,73 @@ function RecipeModal({
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+function confirmSignOut() {
+  return window.confirm("¿Cerrar sesión en este dispositivo?");
+}
+
+function LoadingScreen({ text }: { text: string }) {
+  return (
+    <div className="auth-screen">
+      <p className="loading-note">{text}</p>
+    </div>
+  );
+}
+
+function LoginScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!supabase) return;
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) setError("Correo o contraseña incorrectos.");
+    setBusy(false);
+  };
+
+  return (
+    <div className="auth-screen">
+      <form className="auth-card form" onSubmit={submit}>
+        <span className="brand-mark auth-mark">
+          <Icon name="utensils" size={22} />
+        </span>
+        <div className="full">
+          <h1>SazónControl</h1>
+          <p className="modal-subtitle">Ingresa con tu cuenta para ver los pedidos del negocio.</p>
+        </div>
+        <label className="full">
+          Correo
+          <input
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </label>
+        <label className="full">
+          Contraseña
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </label>
+        {error && <div className="form-warning">{error}</div>}
+        <button className="primary full" disabled={busy}>
+          {busy ? "Ingresando…" : "Ingresar"}
+        </button>
+      </form>
     </div>
   );
 }
