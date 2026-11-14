@@ -21,78 +21,8 @@ type IconName =
 
 type Tab = "inicio" | "servicios" | "pagos" | "prestamos";
 
-const INITIAL_SERVICES: Service[] = [
-  {
-    id: "s1",
-    date: "2025-06-13",
-    shift: "Almuerzo",
-    items: [
-      { id: "m1", name: "Pollo al horno", quantity: 18, unitCost: 11500, price: 22000 },
-      { id: "m2", name: "Lasaña de carne", quantity: 10, unitCost: 14000, price: 26000 },
-    ],
-    orders: [
-      { id: "o1", customer: "Ana María", itemId: "m1", quantity: 2, paid: true },
-      { id: "o2", customer: "Carlos Ríos", itemId: "m2", quantity: 1, paid: false },
-      { id: "o3", customer: "Laura Pérez", itemId: "m1", quantity: 1, paid: true },
-      { id: "o4", customer: "Mateo Silva", itemId: "m2", quantity: 2, paid: false },
-    ],
-  },
-  {
-    id: "s2",
-    date: "2025-06-13",
-    shift: "Cena",
-    items: [
-      {
-        id: "m3",
-        name: "Hamburguesa artesanal",
-        quantity: 22,
-        unitCost: 9000,
-        price: 19000,
-        ingredients: [
-          { id: "i1", name: "Pan de hamburguesa", unit: "unid", buyQty: 12, buyPrice: 9600, usedQty: 22 },
-          { id: "i2", name: "Carne molida", unit: "g", buyQty: 1000, buyPrice: 28000, usedQty: 2640 },
-          { id: "i3", name: "Queso tajado", unit: "tajadas", buyQty: 30, buyPrice: 21000, usedQty: 22 },
-          { id: "i4", name: "Tocineta", unit: "g", buyQty: 500, buyPrice: 14000, usedQty: 660 },
-          { id: "i5", name: "Tomate", unit: "g", buyQty: 1000, buyPrice: 4000, usedQty: 800 },
-          { id: "i6", name: "Lechuga", unit: "unid", buyQty: 1, buyPrice: 3000, usedQty: 2 },
-          { id: "i7", name: "Papas a la francesa", unit: "g", buyQty: 2500, buyPrice: 15000, usedQty: 3300 },
-          { id: "i8", name: "Salsas", unit: "kit", buyQty: 1, buyPrice: 12000, usedQty: 1 },
-          { id: "i9", name: "Empaques", unit: "unid", buyQty: 50, buyPrice: 25000, usedQty: 22 },
-        ],
-      },
-      { id: "m4", name: "Wrap vegetariano", quantity: 8, unitCost: 7500, price: 17000 },
-    ],
-    orders: [
-      { id: "o5", customer: "Sofía Acosta", itemId: "m3", quantity: 2, paid: false },
-      { id: "o6", customer: "Daniel Gómez", itemId: "m4", quantity: 1, paid: true },
-      { id: "o7", customer: "Valentina Ruiz", itemId: "m3", quantity: 1, paid: false },
-    ],
-  },
-  {
-    id: "s3",
-    date: "2025-06-14",
-    shift: "Cena",
-    items: [
-      { id: "m5", name: "Costillas BBQ", quantity: 20, unitCost: 16000, price: 30000 },
-      { id: "m6", name: "Bowl mediterráneo", quantity: 7, unitCost: 10000, price: 21000 },
-    ],
-    orders: [
-      { id: "o8", customer: "Andrés Mora", itemId: "m5", quantity: 2, paid: false },
-      { id: "o9", customer: "Juliana León", itemId: "m6", quantity: 1, paid: false },
-    ],
-  },
-];
-
-const INITIAL_LOANS: Loan[] = [
-  {
-    id: "l1",
-    lender: "Marta",
-    amount: 350000,
-    date: "2025-05-28",
-    note: "Compra inicial de insumos",
-    returned: false,
-  },
-];
+const INITIAL_SERVICES: Service[] = [];
+const INITIAL_LOANS: Loan[] = [];
 
 const money = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -100,6 +30,11 @@ const money = (value: number) =>
     currency: "COP",
     maximumFractionDigits: 0,
   }).format(value);
+
+const localToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 const uid = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -275,10 +210,10 @@ export default function App() {
 function Dashboard() {
   const [tab, setTab] = useState<Tab>("inicio");
   const [services, setServices] = useState<Service[]>(() =>
-    cloudEnabled ? [] : readStorage("sazon-services", INITIAL_SERVICES),
+    cloudEnabled ? [] : readStorage("sazon-v2-services", INITIAL_SERVICES),
   );
   const [loans, setLoans] = useState<Loan[]>(() =>
-    cloudEnabled ? [] : readStorage("sazon-loans", INITIAL_LOANS),
+    cloudEnabled ? [] : readStorage("sazon-v2-loans", INITIAL_LOANS),
   );
   const [loading, setLoading] = useState(cloudEnabled);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -313,10 +248,10 @@ function Dashboard() {
   const [recipeItemId, setRecipeItemId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!cloudEnabled) localStorage.setItem("sazon-services", JSON.stringify(services));
+    if (!cloudEnabled) localStorage.setItem("sazon-v2-services", JSON.stringify(services));
   }, [services]);
   useEffect(() => {
-    if (!cloudEnabled) localStorage.setItem("sazon-loans", JSON.stringify(loans));
+    if (!cloudEnabled) localStorage.setItem("sazon-v2-loans", JSON.stringify(loans));
   }, [loans]);
 
   const allTotals = useMemo(
@@ -669,6 +604,27 @@ function Dashboard() {
               service={selected}
               onBack={() => setSelectedId(null)}
               onTogglePayment={(id) => updatePayment(selected.id, id)}
+              onRemoveOrder={(id) => {
+                const order = selected.orders.find((o) => o.id === id);
+                if (!order || !window.confirm(`¿Quitar a ${order.customer} de este servicio?`)) return;
+                const prev = selected.items.find((i) => i.id === order.itemId);
+                const next = prev && { ...prev, quantity: Math.max(0, prev.quantity - order.quantity) };
+                persist(async () => {
+                  await api.deleteOrder(id);
+                  if (prev && next) await api.syncItem(selected.id, prev, next);
+                });
+                setServices((all) =>
+                  all.map((s) =>
+                    s.id === selected.id
+                      ? {
+                          ...s,
+                          orders: s.orders.filter((o) => o.id !== id),
+                          items: s.items.map((i) => (next && i.id === next.id ? next : i)),
+                        }
+                      : s,
+                  ),
+                );
+              }}
               onAddOrder={() => setShowOrderForm(true)}
               onAddMenu={() => setShowMenuForm(true)}
               onOpenRecipe={(id) => setRecipeItemId(id)}
@@ -838,12 +794,17 @@ function Dashboard() {
         <ServiceForm
           onClose={() => setShowServiceForm(false)}
           onSave={(service) => {
-            persist(() => api.addService(service));
+            persist(async () => {
+              await api.addService(service);
+              for (const item of service.items) await api.addItem(service.id, item);
+            });
             setServices((all) =>
               [...all, service].sort((a, b) => a.date.localeCompare(b.date)),
             );
             setShowServiceForm(false);
+            setSelectedId(service.id);
             setTab("servicios");
+            setShowOrderForm(true);
           }}
         />
       )}
@@ -862,9 +823,22 @@ function Dashboard() {
           service={selected}
           onClose={() => setShowOrderForm(false)}
           onAdd={(order) => {
-            persist(() => api.addOrder(selected.id, order));
+            const prev = selected.items.find((i) => i.id === order.itemId);
+            const next = prev && { ...prev, quantity: prev.quantity + order.quantity };
+            persist(async () => {
+              await api.addOrder(selected.id, order);
+              if (prev && next) await api.syncItem(selected.id, prev, next);
+            });
             setServices((all) =>
-              all.map((s) => (s.id === selected.id ? { ...s, orders: [...s.orders, order] } : s)),
+              all.map((s) =>
+                s.id === selected.id
+                  ? {
+                      ...s,
+                      orders: [...s.orders, order],
+                      items: s.items.map((i) => (next && i.id === next.id ? next : i)),
+                    }
+                  : s,
+              ),
             );
           }}
         />
@@ -878,7 +852,6 @@ function Dashboard() {
               all.map((s) => (s.id === selected.id ? { ...s, items: [...s.items, item] } : s)),
             );
             setShowMenuForm(false);
-            setRecipeItemId(item.id);
           }}
         />
       )}
@@ -946,6 +919,7 @@ function ServiceDetail({
   service,
   onBack,
   onTogglePayment,
+  onRemoveOrder,
   onAddOrder,
   onAddMenu,
   onOpenRecipe,
@@ -953,6 +927,7 @@ function ServiceDetail({
   service: Service;
   onBack: () => void;
   onTogglePayment: (id: string) => void;
+  onRemoveOrder: (id: string) => void;
   onAddOrder: () => void;
   onAddMenu: () => void;
   onOpenRecipe: (id: string) => void;
@@ -975,7 +950,7 @@ function ServiceDetail({
         </div>
         <div className="button-group">
           <button className="secondary" onClick={onAddMenu}>
-            <Icon name="plus" size={17} /> Preparación
+            <Icon name="plus" size={17} /> Otra comida
           </button>
           <button className="primary" onClick={onAddOrder}>
             <Icon name="plus" size={17} /> Agregar personas
@@ -987,7 +962,7 @@ function ServiceDetail({
           icon="chef"
           label="Preparaciones"
           value={String(service.items.reduce((n, i) => n + i.quantity, 0))}
-          detail={`${service.items.length} opciones de menú`}
+          detail={service.items.length === 1 ? "1 comida en el menú" : `${service.items.length} comidas en el menú`}
           tone="cream"
         />
         <Metric
@@ -1023,7 +998,7 @@ function ServiceDetail({
           <div className="menu-table">
             <div className="table-head">
               <span>Preparación</span>
-              <span>Cantidad</span>
+              <span>Platos</span>
               <span>Costo unit.</span>
               <span>Precio</span>
             </div>
@@ -1094,7 +1069,15 @@ function ServiceDetail({
               return (
                 <div className="table-row" key={order.id}>
                   <div className="name-cell">
-                    <span className="mini-initial">{order.customer.charAt(0)}</span>
+                    <button
+                      className="mini-initial remove-order"
+                      title={`Quitar a ${order.customer}`}
+                      aria-label={`Quitar a ${order.customer}`}
+                      onClick={() => onRemoveOrder(order.id)}
+                    >
+                      <span>{order.customer.charAt(0)}</span>
+                      <Icon name="x" size={12} />
+                    </button>
                     <strong>{order.customer}</strong>
                   </div>
                   <span>
@@ -1163,21 +1146,30 @@ function ServiceForm({
   onClose: () => void;
   onSave: (service: Service) => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const [date, setDate] = useState(today);
-  const [shift, setShift] = useState<"Almuerzo" | "Cena">("Cena");
-  const [holiday, setHoliday] = useState(false);
+  const [date, setDate] = useState(localToday());
   const day = new Date(`${date}T12:00:00`).getDay();
-  const valid =
+  const [shift, setShift] = useState<"Almuerzo" | "Cena">(day === 5 ? "Almuerzo" : "Cena");
+  const [holiday, setHoliday] = useState(false);
+  const [dish, setDish] = useState("");
+  const [price, setPrice] = useState("");
+  const validDay =
     day === 5 || (day === 6 && shift === "Cena") || (day === 0 && shift === "Cena" && holiday);
+  const valid = validDay && dish.trim() && Number(price) > 0;
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (valid) onSave({ id: uid(), date, shift, items: [], orders: [] });
+    if (!valid) return;
+    onSave({
+      id: uid(),
+      date,
+      shift,
+      items: [{ id: uid(), name: dish.trim(), quantity: 0, unitCost: 0, price: Number(price) }],
+      orders: [],
+    });
   };
   return (
     <Modal
-      title="Crear servicio"
-      subtitle="Programa una jornada para comenzar a registrar tu menú."
+      title={shift === "Cena" ? "Nueva cena" : "Nuevo almuerzo"}
+      subtitle="Escribe qué comida es y cuánto vale el plato. Después agregas a las personas."
       onClose={onClose}
     >
       <form onSubmit={submit} className="form">
@@ -1185,13 +1177,21 @@ function ServiceForm({
           Fecha
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
         </label>
-        <label>
-          Horario
-          <select value={shift} onChange={(e) => setShift(e.target.value as "Almuerzo" | "Cena")}>
-            <option>Cena</option>
-            <option>Almuerzo</option>
-          </select>
-        </label>
+        <div className="shift-toggle">
+          <span>Horario</span>
+          <div>
+            {(["Almuerzo", "Cena"] as const).map((option) => (
+              <button
+                type="button"
+                key={option}
+                className={shift === option ? "active" : ""}
+                onClick={() => setShift(option)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
         {day === 0 && (
           <label className="checkbox">
             <input
@@ -1202,9 +1202,32 @@ function ServiceForm({
             <span>El lunes siguiente es festivo</span>
           </label>
         )}
-        {!valid && (
+        <label className="full">
+          ¿Qué comida es?
+          <input
+            autoFocus
+            value={dish}
+            onChange={(e) => setDish(e.target.value)}
+            placeholder="Ej. Hamburguesa artesanal"
+            required
+          />
+        </label>
+        <label className="full">
+          Precio de cada plato
+          <input
+            type="number"
+            inputMode="numeric"
+            min="1"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            placeholder="Ej. 19000"
+            required
+          />
+        </label>
+        {!validDay && (
           <div className="form-warning">
-            La fecha o el horario no coincide con tus días de servicio.
+            Ese día no hay {shift.toLowerCase()}: viernes almuerzo y cena, sábado cena, domingo
+            cena solo si el lunes es festivo.
           </div>
         )}
         <div className="form-actions">
@@ -1212,7 +1235,7 @@ function ServiceForm({
             Cancelar
           </button>
           <button className="primary" disabled={!valid}>
-            Crear servicio
+            Crear y agregar personas
           </button>
         </div>
       </form>
@@ -1230,28 +1253,31 @@ function OrderForm({
   onAdd: (order: Order) => void;
 }) {
   const [customer, setCustomer] = useState("");
+  const [itemId, setItemId] = useState(service.items[0]?.id ?? "");
+  const [quantity, setQuantity] = useState(1);
   const [addedNames, setAddedNames] = useState<string[]>([]);
+  const item = service.items.find((i) => i.id === itemId);
+  const plates = service.items.reduce((n, i) => n + i.quantity, 0);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const cleanName = customer.trim();
-    if (!cleanName || !service.items[0]) return;
-    onAdd({
-      id: uid(),
-      customer: cleanName,
-      itemId: service.items[0].id,
-      quantity: 1,
-      paid: false,
-    });
-    setAddedNames((names) => [...names, cleanName]);
+    if (!cleanName || !item) return;
+    onAdd({ id: uid(), customer: cleanName, itemId: item.id, quantity, paid: false });
+    setAddedNames((names) => [...names, quantity > 1 ? `${cleanName} ×${quantity}` : cleanName]);
     setCustomer("");
+    setQuantity(1);
   };
   return (
     <Modal
       title="Agregar personas"
-      subtitle="Cada nombre crea un pedido de un plato y queda pendiente de pago."
+      subtitle="Escribe el nombre y presiona Enter. Cada persona suma a las preparaciones y queda pendiente de pago."
       onClose={onClose}
     >
       <form onSubmit={submit} className="form quick-order-form">
+        <div className="plates-counter full">
+          <span>Preparaciones de este servicio</span>
+          <strong>{plates}</strong>
+        </div>
         <label className="full">
           Nombre de la persona
           <input
@@ -1259,18 +1285,44 @@ function OrderForm({
             value={customer}
             onChange={(e) => setCustomer(e.target.value)}
             placeholder="Ej. Catalina López"
-            required
           />
         </label>
-        {!!service.items[0] && (
-          <div className="order-product full">
-            <span>Pedido asignado</span>
-            <strong>{service.items[0].name}</strong>
-            <b>{money(service.items[0].price)}</b>
+        {service.items.length > 1 && (
+          <div className="dish-picker full">
+            {service.items.map((i) => (
+              <button
+                type="button"
+                key={i.id}
+                className={i.id === itemId ? "active" : ""}
+                onClick={() => setItemId(i.id)}
+              >
+                <strong>{i.name}</strong>
+                <span>{money(i.price)}</span>
+              </button>
+            ))}
           </div>
         )}
+        <div className="order-product full">
+          <div>
+            <span>{item ? item.name : "Sin comida"}</span>
+            <b>{money((item?.price || 0) * quantity)}</b>
+          </div>
+          <div className="qty-stepper">
+            <button
+              type="button"
+              aria-label="Menos platos"
+              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+            >
+              −
+            </button>
+            <strong>{quantity}</strong>
+            <button type="button" aria-label="Más platos" onClick={() => setQuantity((q) => q + 1)}>
+              <Icon name="plus" size={14} />
+            </button>
+          </div>
+        </div>
         {!service.items.length && (
-          <div className="form-warning">Primero debes agregar una preparación al menú.</div>
+          <div className="form-warning">Primero agrega la comida de este servicio.</div>
         )}
         {!!addedNames.length && (
           <div className="added-people full">
@@ -1287,14 +1339,11 @@ function OrderForm({
             </div>
           </div>
         )}
-        <button
-          className="primary full quick-add-button"
-          disabled={!service.items.length || !customer.trim()}
-        >
+        <button className="primary full quick-add-button" disabled={!item || !customer.trim()}>
           <Icon name="plus" size={17} /> Agregar persona
         </button>
         <div className="form-actions quick-order-actions">
-          <small>También puedes presionar Enter para agregar</small>
+          <small>Luego marcas en la lista quién ya pagó</small>
           <button type="button" className="secondary" onClick={onClose}>
             Listo
           </button>
@@ -1306,56 +1355,37 @@ function OrderForm({
 
 function MenuForm({ onClose, onSave }: { onClose: () => void; onSave: (item: MenuItem) => void }) {
   const [name, setName] = useState("");
-  const [quantity, setQuantity] = useState(1);
-  const [unitCost, setUnitCost] = useState(0);
-  const [price, setPrice] = useState(0);
+  const [price, setPrice] = useState("");
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    onSave({ id: uid(), name, quantity, unitCost, price });
+    if (!name.trim() || !(Number(price) > 0)) return;
+    onSave({ id: uid(), name: name.trim(), quantity: 0, unitCost: 0, price: Number(price) });
   };
   return (
     <Modal
-      title="Agregar preparación"
-      subtitle="Registra cuántos platos prepararás y su precio. Luego puedes agregar los ingredientes para calcular el costo exacto."
+      title="Agregar otra comida"
+      subtitle="Para cuando en el mismo servicio vendes más de una comida."
       onClose={onClose}
     >
       <form onSubmit={submit} className="form">
         <label className="full">
-          Nombre de la preparación
+          ¿Qué comida es?
           <input
+            autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Ej. Pollo en salsa"
             required
           />
         </label>
-        <label>
-          Cantidad a preparar
+        <label className="full">
+          Precio de cada plato
           <input
             type="number"
+            inputMode="numeric"
             min="1"
-            value={quantity}
-            onChange={(e) => setQuantity(Number(e.target.value))}
-            required
-          />
-        </label>
-        <label>
-          Costo por plato (opcional)
-          <input
-            type="number"
-            min="0"
-            value={unitCost}
-            onChange={(e) => setUnitCost(Number(e.target.value))}
-            required
-          />
-        </label>
-        <label>
-          Precio de venta
-          <input
-            type="number"
-            min="0"
             value={price}
-            onChange={(e) => setPrice(Number(e.target.value))}
+            onChange={(e) => setPrice(e.target.value)}
             required
           />
         </label>
@@ -1363,7 +1393,7 @@ function MenuForm({ onClose, onSave }: { onClose: () => void; onSave: (item: Men
           <button type="button" className="secondary" onClick={onClose}>
             Cancelar
           </button>
-          <button className="primary">Agregar al menú</button>
+          <button className="primary">Agregar comida</button>
         </div>
       </form>
     </Modal>
@@ -1495,13 +1525,8 @@ function RecipeModal({
 
         <div className="recipe-basics">
           <label>
-            Platos que salen
-            <input
-              type="number"
-              min="1"
-              value={item.quantity}
-              onChange={(e) => update({ quantity: Math.max(1, Number(e.target.value)) })}
-            />
+            Platos pedidos
+            <input type="number" value={item.quantity} readOnly title="Sube solo al agregar personas" />
           </label>
           <label>
             Precio de venta

@@ -1778,3 +1778,116 @@ main {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* Flujo rápido: crear servicio y agregar personas */
+.shift-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #43564e;
+}
+.shift-toggle > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #f0efe9;
+}
+.shift-toggle button {
+  height: 35px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+}
+.shift-toggle button.active {
+  background: white;
+  color: var(--ink);
+  box-shadow: 0 1px 3px #0001;
+}
+.plates-counter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #1f5542;
+  color: white;
+  font-size: 12px;
+}
+.plates-counter strong {
+  font-size: 22px;
+}
+.dish-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+.dish-picker button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: white;
+  font-size: 12px;
+  text-align: left;
+}
+.dish-picker button span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.dish-picker button.active {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px #1d5a4522;
+}
+.qty-stepper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.qty-stepper button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d5ddd6;
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1;
+}
+.qty-stepper strong {
+  min-width: 14px;
+  text-align: center;
+}
+.order-product > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.remove-order {
+  position: relative;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.remove-order svg {
+  display: none;
+}
+.remove-order:hover span,
+.remove-order:focus-visible span {
+  display: none;
+}
+.remove-order:hover svg,
+.remove-order:focus-visible svg {
+  display: block;
+}

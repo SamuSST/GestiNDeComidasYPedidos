@@ -28,11 +28,15 @@ create table if not exists public.preparaciones (
   id              uuid primary key default gen_random_uuid(),
   servicio_id     uuid not null references public.servicios (id) on delete cascade,
   nombre          text not null,
-  cantidad        integer not null default 1 check (cantidad > 0),
+  cantidad        integer not null default 0 check (cantidad >= 0),
   costo_unitario  numeric(12, 2) not null default 0 check (costo_unitario >= 0),
   precio          numeric(12, 2) not null default 0 check (precio >= 0),
   creado_en       timestamptz not null default now()
 );
+-- La cantidad arranca en 0 y sube con cada persona que pide.
+alter table public.preparaciones drop constraint if exists preparaciones_cantidad_check;
+alter table public.preparaciones add constraint preparaciones_cantidad_check check (cantidad >= 0);
+alter table public.preparaciones alter column cantidad set default 0;
 create index if not exists preparaciones_servicio_idx on public.preparaciones (servicio_id);
 
 -- ---------------------------------------------------------------------

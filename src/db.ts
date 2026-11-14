@@ -231,6 +231,10 @@ export const api = {
     );
   },
 
+  async deleteOrder(orderId: string) {
+    await run(db().from("pedidos").delete().eq("id", orderId));
+  },
+
   async setOrderPaid(orderId: string, paid: boolean) {
     await run(
       db()
