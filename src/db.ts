@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { Ingredient, Loan, MenuItem, Order, Service } from "./types";
+import type { Ingredient, Loan, MenuItem, Order, Purchase, Service } from "./types";
 
 /**
  * Conexión a Supabase. Las credenciales llegan en el build desde
@@ -13,7 +13,9 @@ const DEFAULT_KEY = "sb_publishable_BvamrKPM07UC4iaSpE30Xw_iVn9j4-4";
 const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined) || DEFAULT_URL;
 const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || DEFAULT_KEY;
 
-export const supabase = url && anonKey ? createClient(url, anonKey) : null;
+// VITE_LOCAL_ONLY=true sirve para probar sin la base (datos solo en el navegador).
+const localOnly = import.meta.env.VITE_LOCAL_ONLY === "true";
+export const supabase = !localOnly && url && anonKey ? createClient(url, anonKey) : null;
 export const cloudEnabled = !!supabase;
 
 function db() {
@@ -57,6 +59,7 @@ type PedidoRow = {
   cantidad: number;
   pagado: boolean;
 };
+type CompraRow = { id: string; servicio_id: string; nombre: string; precio: number };
 type PrestamoRow = {
   id: string;
   prestamista: string;
@@ -68,7 +71,13 @@ type PrestamoRow = {
 
 export async function loadAll(): Promise<{ services: Service[]; loans: Loan[] }> {
   const c = db();
-  const [servicios, preparaciones, ingredientes, pedidos, prestamos] = await Promise.all([
+  // Si la tabla de compras aún no existe, la app sigue funcionando sin ella.
+  const comprasPromise = c
+    .from("compras")
+    .select("id, servicio_id, nombre, precio")
+    .order("creado_en")
+    .then(({ data, error }) => (error ? [] : ((data || []) as CompraRow[])));
+  const [servicios, preparaciones, ingredientes, pedidos, prestamos, compras] = await Promise.all([
     run<ServicioRow[]>(c.from("servicios").select("id, fecha, turno").order("fecha")),
     run<PreparacionRow[]>(
       c
@@ -96,6 +105,7 @@ export async function loadAll(): Promise<{ services: Service[]; loans: Loan[] }>
         .select("id, prestamista, monto, fecha, nota, devuelto")
         .order("fecha", { ascending: false }),
     ),
+    comprasPromise,
   ]);
 
   const toIngredient = (r: IngredienteRow): Ingredient => ({
@@ -129,6 +139,9 @@ export async function loadAll(): Promise<{ services: Service[]; loans: Loan[] }>
       shift: s.turno,
       items: preparaciones.filter((p) => p.servicio_id === s.id).map(toItem),
       orders: pedidos.filter((p) => p.servicio_id === s.id).map(toOrder),
+      purchases: compras
+        .filter((p) => p.servicio_id === s.id)
+        .map((p): Purchase => ({ id: p.id, name: p.nombre, price: Number(p.precio) })),
     })),
     loans: prestamos.map((p) => ({
       id: p.id,
@@ -233,6 +246,18 @@ export const api = {
           pagado: order.paid,
         }),
     );
+  },
+
+  async addPurchase(serviceId: string, purchase: Purchase) {
+    await run(
+      db()
+        .from("compras")
+        .insert({ id: purchase.id, servicio_id: serviceId, nombre: purchase.name, precio: purchase.price }),
+    );
+  },
+
+  async deletePurchase(purchaseId: string) {
+    await run(db().from("compras").delete().eq("id", purchaseId));
   },
 
   async deleteOrder(orderId: string) {

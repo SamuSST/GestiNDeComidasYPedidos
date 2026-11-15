@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { Ingredient, Loan, MenuItem, Order, Service } from "./types";
+import type { Ingredient, Loan, MenuItem, Order, Purchase, Service } from "./types";
 import { api, cloudEnabled, loadAll, supabase } from "./db";
 
 type IconName =
@@ -157,10 +157,16 @@ function itemUnitCost(item: MenuItem) {
   return item.unitCost;
 }
 
+/** Parte de las ventas que se separa para comprar lo de la preparación. */
+const PURCHASE_BUDGET_PERCENT = 45;
+
 function serviceTotals(service: Service) {
-  const cost = Math.round(
-    service.items.reduce((sum, item) => sum + item.quantity * itemUnitCost(item), 0),
-  );
+  const purchases = service.purchases || [];
+  const purchased = purchases.reduce((sum, p) => sum + p.price, 0);
+  // Si anotaron compras, ese es el costo real; si no, se estima con los ingredientes.
+  const cost = purchases.length
+    ? purchased
+    : Math.round(service.items.reduce((sum, item) => sum + item.quantity * itemUnitCost(item), 0));
   const sales = service.orders.reduce((sum, order) => {
     const item = service.items.find((entry) => entry.id === order.itemId);
     return sum + (item?.price || 0) * order.quantity;
@@ -169,7 +175,16 @@ function serviceTotals(service: Service) {
     const item = service.items.find((entry) => entry.id === order.itemId);
     return sum + (order.paid ? (item?.price || 0) * order.quantity : 0);
   }, 0);
-  return { cost, sales, collected, profit: sales - cost };
+  const budget = Math.round((sales * PURCHASE_BUDGET_PERCENT) / 100);
+  return {
+    cost,
+    sales,
+    collected,
+    profit: sales - cost,
+    purchased,
+    budget,
+    budgetLeft: budget - purchased,
+  };
 }
 
 function dateLabel(date: string) {
@@ -604,6 +619,26 @@ function Dashboard() {
               service={selected}
               onBack={() => setSelectedId(null)}
               onTogglePayment={(id) => updatePayment(selected.id, id)}
+              onAddPurchase={(purchase) => {
+                persist(() => api.addPurchase(selected.id, purchase));
+                setServices((all) =>
+                  all.map((s) =>
+                    s.id === selected.id
+                      ? { ...s, purchases: [...(s.purchases || []), purchase] }
+                      : s,
+                  ),
+                );
+              }}
+              onRemovePurchase={(id) => {
+                persist(() => api.deletePurchase(id));
+                setServices((all) =>
+                  all.map((s) =>
+                    s.id === selected.id
+                      ? { ...s, purchases: (s.purchases || []).filter((p) => p.id !== id) }
+                      : s,
+                  ),
+                );
+              }}
               onRemoveOrder={(id) => {
                 const order = selected.orders.find((o) => o.id === id);
                 if (!order || !window.confirm(`¿Quitar a ${order.customer} de este servicio?`)) return;
@@ -923,6 +958,8 @@ function ServiceDetail({
   onAddOrder,
   onAddMenu,
   onOpenRecipe,
+  onAddPurchase,
+  onRemovePurchase,
 }: {
   service: Service;
   onBack: () => void;
@@ -931,6 +968,8 @@ function ServiceDetail({
   onAddOrder: () => void;
   onAddMenu: () => void;
   onOpenRecipe: (id: string) => void;
+  onAddPurchase: (purchase: Purchase) => void;
+  onRemovePurchase: (id: string) => void;
 }) {
   const totals = serviceTotals(service);
   const margin = totals.sales ? Math.round((totals.profit / totals.sales) * 100) : 0;
@@ -1031,7 +1070,7 @@ function ServiceDetail({
             <strong>{money(totals.sales)}</strong>
           </div>
           <div className="balance-line">
-            <span>Costos</span>
+            <span>{service.purchases?.length ? "Compras" : "Costos estimados"}</span>
             <strong>− {money(totals.cost)}</strong>
           </div>
           <div className="balance-total">
@@ -1046,6 +1085,12 @@ function ServiceDetail({
           </small>
         </div>
       </section>
+      <PurchasesPanel
+        service={service}
+        totals={totals}
+        onAdd={onAddPurchase}
+        onRemove={onRemovePurchase}
+      />
       <div className="panel orders-panel">
         <div className="panel-title">
           <div>
@@ -1722,6 +1767,110 @@ function LoginScreen() {
         {error && <div className="form-warning">{error}</div>}
         <button className="primary full" disabled={busy}>
           {busy ? "Ingresando…" : "Ingresar"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function PurchasesPanel({
+  service,
+  totals,
+  onAdd,
+  onRemove,
+}: {
+  service: Service;
+  totals: ReturnType<typeof serviceTotals>;
+  onAdd: (purchase: Purchase) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const purchases = service.purchases || [];
+  const over = totals.budgetLeft < 0;
+  const used = totals.budget ? Math.min(100, (totals.purchased / totals.budget) * 100) : 0;
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !(Number(price) > 0)) return;
+    onAdd({ id: uid(), name: name.trim(), price: Number(price) });
+    setName("");
+    setPrice("");
+  };
+
+  return (
+    <div className="panel purchases-panel">
+      <div className="panel-title">
+        <div>
+          <p className="eyebrow">Lo que nos costó</p>
+          <h2>Compras para la preparación</h2>
+        </div>
+      </div>
+
+      <div className="budget-grid">
+        <div>
+          <span>Para compras ({PURCHASE_BUDGET_PERCENT}% de lo vendido)</span>
+          <strong>{money(totals.budget)}</strong>
+        </div>
+        <div>
+          <span>Gastamos</span>
+          <strong>{money(totals.purchased)}</strong>
+        </div>
+        <div className={over ? "over" : "left"}>
+          <span>{over ? "Nos pasamos" : "Nos queda"}</span>
+          <strong>{money(Math.abs(totals.budgetLeft))}</strong>
+        </div>
+      </div>
+      <div className={`budget-bar${over ? " over" : ""}`}>
+        <span style={{ width: `${used}%` }} />
+      </div>
+      <p className="budget-note">
+        {totals.sales
+          ? over
+            ? `Las compras superan el ${PURCHASE_BUDGET_PERCENT}% de lo vendido.`
+            : `Van ${Math.round(used)}% del dinero para compras.`
+          : "Cuando agreguen personas, aquí verán cuánto hay para compras."}{" "}
+        Ganancia después de compras: <b>{money(totals.sales - totals.purchased)}</b>
+      </p>
+
+      {purchases.length > 0 && (
+        <div className="ingredient-list purchase-list">
+          {purchases.map((p) => (
+            <div className="ingredient-row" key={p.id}>
+              <div>
+                <strong>{p.name}</strong>
+              </div>
+              <b>{money(p.price)}</b>
+              <button
+                className="remove-ingredient"
+                aria-label={`Quitar ${p.name}`}
+                onClick={() => onRemove(p.id)}
+              >
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <form className="purchase-form" onSubmit={submit}>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="¿Qué compraron? Ej. Carne molida"
+          aria-label="Qué compraron"
+        />
+        <input
+          type="number"
+          inputMode="numeric"
+          min="1"
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          placeholder="Precio"
+          aria-label="Precio"
+        />
+        <button className="primary" disabled={!name.trim() || !(Number(price) > 0)}>
+          <Icon name="plus" size={16} /> Agregar
         </button>
       </form>
     </div>

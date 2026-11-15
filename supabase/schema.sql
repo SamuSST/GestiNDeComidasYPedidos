@@ -72,6 +72,19 @@ create index if not exists pedidos_servicio_idx on public.pedidos (servicio_id);
 create index if not exists pedidos_pendientes_idx on public.pedidos (pagado) where not pagado;
 
 -- ---------------------------------------------------------------------
+-- Compras: lo que se compró para un servicio y cuánto costó.
+-- La app separa el 45% de lo vendido para estas compras.
+-- ---------------------------------------------------------------------
+create table if not exists public.compras (
+  id           uuid primary key default gen_random_uuid(),
+  servicio_id  uuid not null references public.servicios (id) on delete cascade,
+  nombre       text not null,
+  precio       numeric(12, 2) not null check (precio > 0),
+  creado_en    timestamptz not null default now()
+);
+create index if not exists compras_servicio_idx on public.compras (servicio_id);
+
+-- ---------------------------------------------------------------------
 -- Préstamos: dinero que les prestan a Samuel y Luisa para el negocio.
 -- ---------------------------------------------------------------------
 create table if not exists public.prestamos (
@@ -93,11 +106,12 @@ alter table public.preparaciones enable row level security;
 alter table public.ingredientes  enable row level security;
 alter table public.pedidos       enable row level security;
 alter table public.prestamos     enable row level security;
+alter table public.compras       enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['servicios', 'preparaciones', 'ingredientes', 'pedidos', 'prestamos'] loop
+  foreach t in array array['servicios', 'preparaciones', 'ingredientes', 'pedidos', 'prestamos', 'compras'] loop
     execute format('drop policy if exists "equipo_acceso_total" on public.%I', t);
     execute format(
       'create policy "equipo_acceso_total" on public.%I for all to authenticated using (true) with check (true)',

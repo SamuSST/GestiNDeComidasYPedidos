@@ -1891,3 +1891,102 @@ main {
 .remove-order:focus-visible svg {
   display: block;
 }
+
+/* Compras y presupuesto (45% de lo vendido) */
+.purchases-panel {
+  margin-bottom: 18px;
+}
+.budget-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 6px;
+}
+.budget-grid > div {
+  padding: 12px;
+  border-radius: 11px;
+  background: #f3f6f2;
+}
+.budget-grid span {
+  display: block;
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.budget-grid strong {
+  font-size: 16px;
+}
+.budget-grid .left {
+  background: #e1f5e6;
+}
+.budget-grid .left strong {
+  color: #1f7a3d;
+}
+.budget-grid .over {
+  background: #fde8de;
+}
+.budget-grid .over strong {
+  color: #b5441f;
+}
+.budget-bar {
+  height: 8px;
+  margin: 14px 0 8px;
+  border-radius: 99px;
+  background: #ecebe5;
+  overflow: hidden;
+}
+.budget-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: #1f5542;
+}
+.budget-bar.over span {
+  background: #d4592f;
+}
+.budget-note {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.budget-note b {
+  color: var(--ink);
+}
+.purchase-list {
+  margin-bottom: 12px;
+}
+.purchase-form {
+  display: grid;
+  grid-template-columns: 1fr 110px auto;
+  gap: 8px;
+}
+.purchase-form input {
+  min-width: 0;
+  height: 40px;
+  border: 1px solid #dadfd9;
+  border-radius: 8px;
+  padding: 0 11px;
+  font-size: 13px;
+  outline: none;
+}
+.purchase-form .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 14px;
+}
+@media (max-width: 520px) {
+  .budget-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .budget-grid > div:first-child {
+    grid-column: 1 / -1;
+  }
+  .purchase-form {
+    grid-template-columns: 1fr 1fr;
+  }
+  .purchase-form input:first-child {
+    grid-column: 1 / -1;
+  }
+}

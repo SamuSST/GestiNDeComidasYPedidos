@@ -24,12 +24,20 @@ export type Order = {
   paid: boolean;
 };
 
+export type Purchase = {
+  id: string;
+  name: string;
+  price: number;
+};
+
 export type Service = {
   id: string;
   date: string;
   shift: "Almuerzo" | "Cena";
   items: MenuItem[];
   orders: Order[];
+  /** Lo que se compró para este servicio y cuánto costó. */
+  purchases?: Purchase[];
 };
 
 export type Loan = {
